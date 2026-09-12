@@ -439,7 +439,8 @@ def create_note(content: str) -> str:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     note_path = NOTES_DIR / f"note_{timestamp}.txt"
     note_path.write_text(content.strip() + "\n", encoding="utf-8")
-    return f"I saved your note: {content.strip()}"
+    os.startfile(note_path)
+    return f"I saved your note and opened it in Notepad: {content.strip()}"
 
 
 def timer_finished(seconds: int) -> None:
@@ -499,7 +500,11 @@ def take_screenshot() -> str:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     screenshot_path = SCREENSHOTS_DIR / f"screenshot_{timestamp}.png"
     ImageGrab.grab(all_screens=True).save(screenshot_path)
-    return f"Screenshot saved as {screenshot_path.name}."
+    subprocess.Popen(
+        ["explorer.exe", "/select,", str(screenshot_path)],
+        creationflags=CREATE_NO_WINDOW,
+    )
+    return "Screenshot saved. I opened its folder and selected the new image."
 
 
 def searchable_roots() -> list[Path]:
@@ -514,11 +519,22 @@ def searchable_roots() -> list[Path]:
 def open_local_path(requested_name: str) -> str:
     """Find and open an unambiguous local file or folder by name."""
     requested = requested_name.casefold().strip()
+    home = Path.home()
+    onedrive = Path(os.environ.get("OneDrive", home / "OneDrive"))
     aliases = {
-        "downloads": Path.home() / "Downloads",
-        "documents": Path.home() / "Documents",
-        "desktop": Path.home() / "Desktop",
+        "downloads": home / "Downloads",
+        "download": home / "Downloads",
+        "downloads folder": home / "Downloads",
+        "download folder": home / "Downloads",
+        "documents": onedrive / "Documents" if (onedrive / "Documents").exists() else home / "Documents",
+        "documents folder": onedrive / "Documents" if (onedrive / "Documents").exists() else home / "Documents",
+        "desktop": onedrive / "Desktop" if (onedrive / "Desktop").exists() else home / "Desktop",
+        "desktop folder": onedrive / "Desktop" if (onedrive / "Desktop").exists() else home / "Desktop",
         "codex": Path("E:/codex"),
+        "notes": NOTES_DIR,
+        "notes folder": NOTES_DIR,
+        "screenshots": SCREENSHOTS_DIR,
+        "screenshots folder": SCREENSHOTS_DIR,
     }
     if requested in aliases and aliases[requested].exists():
         os.startfile(aliases[requested])
@@ -574,7 +590,16 @@ def handle_command(command: str) -> str:
             print(f"Iris interpreted that as: {repaired}")
         return handle_command(repaired)
     if command.startswith("open "):
-        return open_target(command.removeprefix("open ").strip())
+        requested = command.removeprefix("open ").strip()
+        folder_names = {
+            "download", "downloads", "download folder", "downloads folder",
+            "document", "documents", "documents folder", "desktop",
+            "desktop folder", "codex", "notes", "notes folder",
+            "screenshots", "screenshots folder",
+        }
+        if requested in folder_names:
+            return open_local_path(requested)
+        return open_target(requested)
     for engine in ("google", "youtube"):
         prefix = f"search {engine} for "
         if command.startswith(prefix) and command[len(prefix) :].strip():
