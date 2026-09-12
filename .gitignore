@@ -9,6 +9,8 @@ pip-cache/
 
 # Temporary microphone recordings
 iris-command.wav
+iris-state.json
+iris-muted.flag
 
 # Local configuration and secrets
 .env

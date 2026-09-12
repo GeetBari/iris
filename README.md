@@ -22,7 +22,12 @@ Iris can open any unambiguous application listed in your Windows Start menu; the
 
 ## Run it
 
-Double-click `run_iris.bat`, or open PowerShell in this folder and run:
+For the hands-free tray app, double-click `run_iris_tray.bat`. The tray icon
+shows Iris's current state; right-click it to mute, resume, restart, or quit.
+Use only one Iris launcher at a time.
+
+For the original terminal interface, double-click `run_iris.bat`, or open
+PowerShell in this folder and run:
 
 ```powershell
 .\.venv\Scripts\python.exe assistant.py

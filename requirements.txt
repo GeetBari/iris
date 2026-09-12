@@ -1,5 +1,7 @@
 faster-whisper
 numpy
+Pillow
+pystray
 pyttsx3
 sounddevice
 soundfile

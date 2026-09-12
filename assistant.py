@@ -34,12 +34,31 @@ APPS: dict[str, str] = {
 MODEL_PATH = Path(__file__).parent / "models" / "vosk-model-small-en-us-0.15"
 WHISPER_CACHE_DIR = Path(__file__).parent / "models" / "whisper"
 RECORDING_PATH = Path(__file__).parent / "iris-command.wav"
+STATE_PATH = Path(__file__).parent / "iris-state.json"
+MUTE_PATH = Path(__file__).parent / "iris-muted.flag"
 OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 OLLAMA_MODEL = "qwen3:4b"
 
 
+def set_state(state: str) -> None:
+    """Publish Iris's local UI state for the tray controller."""
+    try:
+        STATE_PATH.write_text(json.dumps({"state": state}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def get_state() -> str:
+    try:
+        return json.loads(STATE_PATH.read_text(encoding="utf-8")).get("state", "stopped")
+    except (OSError, ValueError):
+        return "stopped"
+
+
 def speak(text: str) -> None:
     """Speak a short reply using Windows' offline speech engine."""
+    previous_state = get_state()
+    set_state("speaking")
     try:
         import pyttsx3
 
@@ -53,6 +72,8 @@ def speak(text: str) -> None:
         engine.runAndWait()
     except Exception as error:
         print(f"Iris voice is unavailable: {error}")
+    finally:
+        set_state(previous_state)
 
 
 def wait_for_wake_word() -> bool:
@@ -80,17 +101,25 @@ def wait_for_wake_word() -> bool:
         json.dumps(["hey iris", "iris", "[unk]"]),
     )
     print("● Listening for 'Hey Iris' — press Ctrl+C to stop.")
+    set_state("listening")
     with sd.RawInputStream(
         samplerate=16_000, blocksize=4_000, dtype="int16",
         channels=1, callback=capture,
     ):
         while True:
             audio = microphone_queue.get(timeout=1)
+            if MUTE_PATH.exists():
+                set_state("muted")
+                recognizer.Reset()
+                continue
+            if get_state() == "muted":
+                set_state("listening")
             if recognizer.AcceptWaveform(audio):
                 text = json.loads(recognizer.Result()).get("text", "")
             else:
                 text = json.loads(recognizer.PartialResult()).get("partial", "")
             if "iris" in text.casefold().split():
+                set_state("awake")
                 return True
 
 
@@ -128,6 +157,7 @@ def listen_for_command(max_seconds: int = 15) -> str:
 
     sample_rate = 16_000
     print("Iris is listening. Speak naturally, then pause when you are finished...")
+    set_state("recording")
     try:
         import numpy as np
 
@@ -170,6 +200,7 @@ def listen_for_command(max_seconds: int = 15) -> str:
             recording.setframerate(sample_rate)
             recording.writeframes(b"".join(audio_parts))
         print("Iris is understanding what you said...")
+        set_state("transcribing")
         model = WhisperModel(
             "small.en", device="cpu", compute_type="int8",
             download_root=str(WHISPER_CACHE_DIR),
@@ -232,7 +263,9 @@ operations, purchases, messages, settings changes, or any action not listed."""
 
 def handle_natural_command(command: str) -> str:
     """Use the local model for flexible phrasing, then execute only safe tools."""
+    set_state("thinking")
     action = ask_iris_brain(command)
+    set_state("idle")
     if action is None:
         return "My local brain is still starting. Please try again in a moment."
     kind, argument = action["action"], action["argument"].strip()
@@ -393,6 +426,17 @@ def handle_command(command: str) -> str:
 
 
 def main() -> None:
+    if "--handsfree" in sys.argv:
+        set_state("starting")
+        try:
+            hands_free_mode()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            set_state("stopped")
+        return
+
+    set_state("idle")
     welcome = (
         "Iris is ready. Type voice and speak naturally, then pause when finished. For example, "
         "could you fire up Discord? Type help for examples or quit to stop."
@@ -406,6 +450,7 @@ def main() -> None:
             speak(reply)
         except (EOFError, KeyboardInterrupt, SystemExit):
             print("\nIris stopped.")
+            set_state("stopped")
             return
 
 
