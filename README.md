@@ -15,6 +15,11 @@ A free, local-first Windows assistant. Iris uses Whisper for offline speech reco
 * `voice` — speak naturally, then pause to submit the command, e.g. `could you fire up Discord?`
 * Spoken replies — Iris uses the built-in Windows offline voice by default.
 * `handsfree` — enables the local “Hey Iris” wake word; press `Ctrl+C` for an immediate stop.
+* `take a note saying buy milk` — saves a private text note under `data/notes`.
+* `set a timer for five minutes`
+* `turn the volume up`, `turn the volume down`, or `mute the volume`
+* `take a screenshot` — saves it under `data/screenshots`.
+* `open my Downloads folder` or `open the Iris README file`
 * `help`
 * `quit`
 

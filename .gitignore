@@ -12,6 +12,7 @@ iris-command.wav
 iris-state.json
 iris-muted.flag
 iris.log
+data/
 
 # Local configuration and secrets
 .env

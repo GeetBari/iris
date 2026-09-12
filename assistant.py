@@ -6,13 +6,16 @@ This intentionally uses an allowlist instead of executing arbitrary commands.
 from __future__ import annotations
 
 import json
+import os
 import queue
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 import webbrowser
 import wave
+from datetime import datetime
 from difflib import get_close_matches
 from pathlib import Path
 import re
@@ -36,10 +39,14 @@ WHISPER_CACHE_DIR = Path(__file__).parent / "models" / "whisper"
 RECORDING_PATH = Path(__file__).parent / "iris-command.wav"
 STATE_PATH = Path(__file__).parent / "iris-state.json"
 MUTE_PATH = Path(__file__).parent / "iris-muted.flag"
+DATA_DIR = Path(__file__).parent / "data"
+NOTES_DIR = DATA_DIR / "notes"
+SCREENSHOTS_DIR = DATA_DIR / "screenshots"
 OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 OLLAMA_MODEL = "qwen3:4b"
 CREATE_NO_WINDOW = 0x08000000
 START_APPS_CACHE: list[tuple[str, str]] | None = None
+ACTIVE_TIMERS: list[threading.Timer] = []
 
 
 def set_state(state: str) -> None:
@@ -223,10 +230,15 @@ def listen_for_command(max_seconds: int = 15) -> str:
 def ask_iris_brain(command: str) -> dict[str, str] | None:
     """Translate natural language into one safe, structured action locally."""
     system = """You are Iris, a Windows assistant. Return exactly one JSON object.
-Allowed actions are: open_app, search_google, search_youtube, search_spotify,
-chat, unknown.
+Allowed actions are: open_app, open_path, search_google, search_youtube,
+search_spotify, create_note, set_timer, volume_up, volume_down, volume_mute,
+take_screenshot, chat, unknown.
 For open_app, the JSON is {"action":"open_app","argument":"app name"}.
 For every search, the JSON is {"action":"search_name","argument":"query"}.
+For a file or folder, use open_path and put its name in argument.
+For create_note, put only the note content in argument.
+For set_timer, convert the duration to seconds and put only that integer in argument.
+For volume actions and take_screenshot, use an empty argument string.
 Use search_spotify whenever the user asks to play, find, or search for music,
 an artist, an album, or a playlist on Spotify.
 For chat, argument is a brief helpful reply. Never suggest shell commands, file
@@ -251,8 +263,9 @@ operations, purchases, messages, settings changes, or any action not listed."""
     except (URLError, TimeoutError, KeyError, ValueError, json.JSONDecodeError):
         return None
     if action.get("action") not in {
-        "open_app", "search_google", "search_youtube", "search_spotify",
-        "chat", "unknown",
+        "open_app", "open_path", "search_google", "search_youtube",
+        "search_spotify", "create_note", "set_timer", "volume_up",
+        "volume_down", "volume_mute", "take_screenshot", "chat", "unknown",
     }:
         return None
     # Accept `query` from a model that follows conventional search naming,
@@ -280,6 +293,16 @@ def handle_natural_command(command: str) -> str:
         return search("youtube", argument)
     if kind == "search_spotify" and argument:
         return search_spotify(argument)
+    if kind == "create_note" and argument:
+        return create_note(argument)
+    if kind == "set_timer" and argument:
+        return set_timer(argument)
+    if kind in {"volume_up", "volume_down", "volume_mute"}:
+        return change_volume(kind)
+    if kind == "take_screenshot":
+        return take_screenshot()
+    if kind == "open_path" and argument:
+        return open_local_path(argument)
     if kind == "chat":
         return argument
     return "I can open apps, search Google or YouTube, and answer simple questions."
@@ -408,6 +431,125 @@ def search_spotify(query: str) -> str:
     spotify_uri = f"spotify:search:{urllib.parse.quote(query)}"
     webbrowser.open(spotify_uri)
     return f"Opening Spotify and searching for: {query}"
+
+
+def create_note(content: str) -> str:
+    """Save a timestamped private note under Iris's E:-drive data directory."""
+    NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    note_path = NOTES_DIR / f"note_{timestamp}.txt"
+    note_path.write_text(content.strip() + "\n", encoding="utf-8")
+    return f"I saved your note: {content.strip()}"
+
+
+def timer_finished(seconds: int) -> None:
+    try:
+        import winsound
+
+        winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+    except ImportError:
+        pass
+    speak("Your timer is finished.")
+
+
+def set_timer(seconds_text: str) -> str:
+    """Start an in-process timer, limited to 24 hours."""
+    try:
+        seconds = int(float(seconds_text.strip()))
+    except ValueError:
+        return "I couldn't understand the timer duration."
+    if not 1 <= seconds <= 86_400:
+        return "Timers must be between one second and twenty four hours."
+    timer = threading.Timer(seconds, timer_finished, args=(seconds,))
+    timer.daemon = True
+    ACTIVE_TIMERS.append(timer)
+    timer.start()
+    if seconds < 60:
+        duration = f"{seconds} seconds"
+    elif seconds % 60 == 0:
+        duration = f"{seconds // 60} minutes"
+    else:
+        duration = f"{seconds // 60} minutes and {seconds % 60} seconds"
+    return f"Timer set for {duration}."
+
+
+def change_volume(action: str) -> str:
+    """Use Windows media keys without installing a system-level utility."""
+    import ctypes
+
+    keys = {"volume_up": 0xAF, "volume_down": 0xAE, "volume_mute": 0xAD}
+    repeats = 5 if action != "volume_mute" else 1
+    for _ in range(repeats):
+        key = keys[action]
+        ctypes.windll.user32.keybd_event(key, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(key, 0, 2, 0)
+    replies = {
+        "volume_up": "I turned the volume up.",
+        "volume_down": "I turned the volume down.",
+        "volume_mute": "I toggled mute.",
+    }
+    return replies[action]
+
+
+def take_screenshot() -> str:
+    """Capture all screens to Iris's private local data directory."""
+    from PIL import ImageGrab
+
+    SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    screenshot_path = SCREENSHOTS_DIR / f"screenshot_{timestamp}.png"
+    ImageGrab.grab(all_screens=True).save(screenshot_path)
+    return f"Screenshot saved as {screenshot_path.name}."
+
+
+def searchable_roots() -> list[Path]:
+    """Return useful local roots without scanning entire drives."""
+    candidates = [
+        Path("E:/codex"), Path("D:/projects"), Path.home() / "Desktop",
+        Path.home() / "Documents", Path.home() / "Downloads",
+    ]
+    return [path for path in candidates if path.exists()]
+
+
+def open_local_path(requested_name: str) -> str:
+    """Find and open an unambiguous local file or folder by name."""
+    requested = requested_name.casefold().strip()
+    aliases = {
+        "downloads": Path.home() / "Downloads",
+        "documents": Path.home() / "Documents",
+        "desktop": Path.home() / "Desktop",
+        "codex": Path("E:/codex"),
+    }
+    if requested in aliases and aliases[requested].exists():
+        os.startfile(aliases[requested])
+        return f"Opening {requested_name}."
+
+    matches: list[Path] = []
+    ignored = {".git", ".venv", "models", "pip-cache", "__pycache__"}
+    inspected = 0
+    for root in searchable_roots():
+        for current, directories, files in os.walk(root):
+            directories[:] = [name for name in directories if name not in ignored]
+            for name in directories + files:
+                inspected += 1
+                if requested in name.casefold():
+                    matches.append(Path(current) / name)
+                    if len(matches) >= 6:
+                        break
+                if inspected >= 50_000:
+                    break
+            if len(matches) >= 6 or inspected >= 50_000:
+                break
+        if len(matches) >= 6 or inspected >= 50_000:
+            break
+
+    if len(matches) == 1:
+        os.startfile(matches[0])
+        return f"Opening {matches[0].name}."
+    if matches:
+        names = ", ".join(path.name for path in matches[:5])
+        return f"I found several matches: {names}. Please be more specific."
+    return f"I couldn't find a file or folder named {requested_name}."
 
 
 def handle_command(command: str) -> str:
