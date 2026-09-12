@@ -12,7 +12,9 @@ A free, local-first Windows assistant. Iris uses Whisper for offline speech reco
 * `search youtube for lo-fi music`
 * `search google for weather in delhi`
 * `play relaxing music on Spotify` — opens Spotify directly to a music search.
-* `voice` — then speak naturally within six seconds, e.g. `could you fire up Discord?`
+* `voice` — speak naturally, then pause to submit the command, e.g. `could you fire up Discord?`
+* Spoken replies — Iris uses the built-in Windows offline voice by default.
+* `handsfree` — enables the local “Hey Iris” wake word; press `Ctrl+C` for an immediate stop.
 * `help`
 * `quit`
 

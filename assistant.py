@@ -6,8 +6,10 @@ This intentionally uses an allowlist instead of executing arbitrary commands.
 from __future__ import annotations
 
 import json
+import queue
 import subprocess
 import sys
+import time
 import urllib.parse
 import webbrowser
 import wave
@@ -36,8 +38,88 @@ OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 OLLAMA_MODEL = "qwen3:4b"
 
 
-def listen_for_command(seconds: int = 6) -> str:
-    """Record a short command and transcribe it locally with Whisper."""
+def speak(text: str) -> None:
+    """Speak a short reply using Windows' offline speech engine."""
+    try:
+        import pyttsx3
+
+        engine = pyttsx3.init()
+        engine.setProperty("rate", 185)
+        for voice in engine.getProperty("voices"):
+            if "zira" in voice.name.casefold():
+                engine.setProperty("voice", voice.id)
+                break
+        engine.say(text[:400])
+        engine.runAndWait()
+    except Exception as error:
+        print(f"Iris voice is unavailable: {error}")
+
+
+def wait_for_wake_word() -> bool:
+    """Listen locally for 'Hey Iris' using a restricted lightweight grammar."""
+    try:
+        import sounddevice as sd
+        from vosk import KaldiRecognizer, Model
+    except ImportError:
+        print("Wake-word support is unavailable because Vosk is not installed.")
+        return False
+
+    if not MODEL_PATH.is_dir():
+        print(f"Wake-word model is missing: {MODEL_PATH}")
+        return False
+
+    microphone_queue: queue.Queue[bytes] = queue.Queue()
+
+    def capture(indata: bytes, frames: int, timing: object, status: object) -> None:
+        if status:
+            print(f"Microphone status: {status}")
+        microphone_queue.put(bytes(indata))
+
+    recognizer = KaldiRecognizer(
+        Model(str(MODEL_PATH)), 16_000,
+        json.dumps(["hey iris", "iris", "[unk]"]),
+    )
+    print("● Listening for 'Hey Iris' — press Ctrl+C to stop.")
+    with sd.RawInputStream(
+        samplerate=16_000, blocksize=4_000, dtype="int16",
+        channels=1, callback=capture,
+    ):
+        while True:
+            audio = microphone_queue.get(timeout=1)
+            if recognizer.AcceptWaveform(audio):
+                text = json.loads(recognizer.Result()).get("text", "")
+            else:
+                text = json.loads(recognizer.PartialResult()).get("partial", "")
+            if "iris" in text.casefold().split():
+                return True
+
+
+def hands_free_mode() -> str:
+    """Wait for the wake word, process one command, and resume listening."""
+    speak("Hands free mode is on. Say Hey Iris, then wait for the beep.")
+    while wait_for_wake_word():
+        try:
+            import winsound
+
+            winsound.MessageBeep()
+        except ImportError:
+            pass
+        heard = listen_for_command()
+        print(f"You said: {heard}")
+        if heard.startswith(("I didn't", "I couldn't")):
+            speak(heard)
+            continue
+        repaired = normalise_voice_command(heard)
+        if repaired in {"stop listening", "mute", "hands free off"}:
+            return "Hands free mode is off."
+        reply = handle_command(repaired)
+        print(f"Iris: {reply}")
+        speak(reply)
+    return "Hands free mode is unavailable."
+
+
+def listen_for_command(max_seconds: int = 15) -> str:
+    """Record until the speaker pauses, then transcribe locally with Whisper."""
     try:
         import sounddevice as sd
         from faster_whisper import WhisperModel
@@ -45,13 +127,39 @@ def listen_for_command(seconds: int = 6) -> str:
         return "Whisper voice support is not installed. Run run_iris.bat from this folder."
 
     sample_rate = 16_000
-    print(f"Iris is listening for {seconds} seconds. Speak now...")
+    print("Iris is listening. Speak naturally, then pause when you are finished...")
     try:
-        audio = sd.rec(
-            int(seconds * sample_rate), samplerate=sample_rate,
-            channels=1, dtype="int16"
-        )
-        sd.wait()
+        import numpy as np
+
+        chunks: queue.Queue[bytes] = queue.Queue()
+
+        def capture(indata: bytes, frames: int, timing: object, status: object) -> None:
+            if status:
+                print(f"Microphone status: {status}")
+            chunks.put(bytes(indata))
+
+        audio_parts: list[bytes] = []
+        heard_speech = False
+        quiet_seconds = 0.0
+        started_at = time.monotonic()
+        block_seconds = 0.25
+        with sd.RawInputStream(
+            samplerate=sample_rate, blocksize=int(sample_rate * block_seconds),
+            dtype="int16", channels=1, callback=capture,
+        ):
+            while time.monotonic() - started_at < max_seconds:
+                chunk = chunks.get(timeout=1)
+                audio_parts.append(chunk)
+                volume = float(np.sqrt(np.mean(np.frombuffer(chunk, dtype=np.int16).astype(float) ** 2)))
+                if volume > 350:
+                    heard_speech = True
+                    quiet_seconds = 0.0
+                elif heard_speech:
+                    quiet_seconds += block_seconds
+                if heard_speech and quiet_seconds >= 1.2:
+                    break
+        if not heard_speech:
+            return "I didn't hear any speech. Please try voice again."
     except Exception as error:
         return f"I couldn't use the microphone: {error}"
 
@@ -60,7 +168,7 @@ def listen_for_command(seconds: int = 6) -> str:
             recording.setnchannels(1)
             recording.setsampwidth(2)
             recording.setframerate(sample_rate)
-            recording.writeframes(audio.tobytes())
+            recording.writeframes(b"".join(audio_parts))
         print("Iris is understanding what you said...")
         model = WhisperModel(
             "small.en", device="cpu", compute_type="int8",
@@ -262,8 +370,10 @@ def handle_command(command: str) -> str:
         names = ", ".join(APPS)
         return (
             f"Try: open [ {names} ], search google for [words], "
-            "or search youtube for [words]."
+            "search youtube for [words], voice, or handsfree."
         )
+    if command in {"handsfree", "hands free"}:
+        return hands_free_mode()
     if command == "voice":
         heard = listen_for_command()
         print(f"You said: {heard}")
@@ -283,14 +393,17 @@ def handle_command(command: str) -> str:
 
 
 def main() -> None:
-    print(
-        "Iris is ready. Type 'voice' and speak naturally, for example "
-        "'could you fire up Discord?'. Type 'help' for examples or 'quit' to stop."
+    welcome = (
+        "Iris is ready. Type voice and speak naturally, then pause when finished. For example, "
+        "could you fire up Discord? Type help for examples or quit to stop."
     )
+    print(welcome)
+    speak("Iris is ready.")
     while True:
         try:
             reply = handle_command(input("You: "))
             print(f"Iris: {reply}")
+            speak(reply)
         except (EOFError, KeyboardInterrupt, SystemExit):
             print("\nIris stopped.")
             return
