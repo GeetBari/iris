@@ -11,6 +11,7 @@ pip-cache/
 iris-command.wav
 iris-state.json
 iris-muted.flag
+iris.log
 
 # Local configuration and secrets
 .env

@@ -100,7 +100,7 @@ def wait_for_wake_word() -> bool:
         Model(str(MODEL_PATH)), 16_000,
         json.dumps(["hey iris", "iris", "[unk]"]),
     )
-    print("● Listening for 'Hey Iris' — press Ctrl+C to stop.")
+    print("Listening for 'Hey Iris' - press Ctrl+C to stop.")
     set_state("listening")
     with sd.RawInputStream(
         samplerate=16_000, blocksize=4_000, dtype="int16",
@@ -133,6 +133,7 @@ def hands_free_mode() -> str:
             winsound.MessageBeep()
         except ImportError:
             pass
+        speak("Yes?")
         heard = listen_for_command()
         print(f"You said: {heard}")
         if heard.startswith(("I didn't", "I couldn't")):
