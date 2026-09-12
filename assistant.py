@@ -38,6 +38,8 @@ STATE_PATH = Path(__file__).parent / "iris-state.json"
 MUTE_PATH = Path(__file__).parent / "iris-muted.flag"
 OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 OLLAMA_MODEL = "qwen3:4b"
+CREATE_NO_WINDOW = 0x08000000
+START_APPS_CACHE: list[tuple[str, str]] | None = None
 
 
 def set_state(state: str) -> None:
@@ -322,7 +324,7 @@ def open_target(name: str) -> str:
         webbrowser.open(target)
     else:
         try:
-            subprocess.Popen([target])
+            subprocess.Popen([target], creationflags=CREATE_NO_WINDOW)
         except FileNotFoundError:
             return f"I couldn't find {target}. Check that it is installed or update APPS."
     return f"Opening {name}."
@@ -330,6 +332,10 @@ def open_target(name: str) -> str:
 
 def installed_start_apps() -> list[tuple[str, str]]:
     """Read Windows' Start-menu app catalogue without maintaining our own list."""
+    global START_APPS_CACHE
+    if START_APPS_CACHE is not None:
+        return START_APPS_CACHE
+
     separator = "\x1f"
     command = (
         "Get-StartApps | ForEach-Object { "
@@ -338,6 +344,7 @@ def installed_start_apps() -> list[tuple[str, str]]:
     result = subprocess.run(
         ["powershell.exe", "-NoProfile", "-Command", command],
         capture_output=True, text=True, check=False,
+        creationflags=CREATE_NO_WINDOW,
     )
     apps = []
     for line in result.stdout.splitlines():
@@ -345,6 +352,7 @@ def installed_start_apps() -> list[tuple[str, str]]:
             app_name, app_id = line.split(separator, 1)
             if app_name and app_id:
                 apps.append((app_name, app_id))
+    START_APPS_CACHE = apps
     return apps
 
 
@@ -360,7 +368,10 @@ def open_installed_app(requested_name: str) -> str:
     matches = exact or contains
     if len(matches) == 1:
         app_name, app_id = matches[0]
-        subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{app_id}"])
+        subprocess.Popen(
+            ["explorer.exe", f"shell:AppsFolder\\{app_id}"],
+            creationflags=CREATE_NO_WINDOW,
+        )
         return f"Opening {app_name}."
     if len(matches) > 1:
         names = ", ".join(app_name for app_name, _ in matches[:5])
@@ -374,7 +385,10 @@ def open_installed_app(requested_name: str) -> str:
             for app_name, app_id in apps
             if app_name.casefold() == suggestion[0]
         )
-        subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{app_id}"])
+        subprocess.Popen(
+            ["explorer.exe", f"shell:AppsFolder\\{app_id}"],
+            creationflags=CREATE_NO_WINDOW,
+        )
         return f"I heard '{requested_name}' and opened {app_name}."
     return f"I couldn't find an installed app named '{requested_name}'."
 
