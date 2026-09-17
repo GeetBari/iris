@@ -450,8 +450,6 @@ def search_spotify(query: str) -> str:
 
 def create_note(content: str) -> str:
     """Save a timestamped private note under Iris's E:-drive data directory."""
-    if not confirm_action(f"Should I save this note: {content.strip()}?"):
-        return "Okay, I did not save the note."
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     note_path = NOTES_DIR / f"note_{timestamp}.txt"
@@ -512,9 +510,6 @@ def change_volume(action: str) -> str:
 def take_screenshot() -> str:
     """Capture all screens to Iris's private local data directory."""
     from PIL import ImageGrab
-
-    if not confirm_action("Should I take a screenshot now?"):
-        return "Okay, I did not take a screenshot."
 
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
