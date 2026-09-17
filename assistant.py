@@ -47,6 +47,7 @@ OLLAMA_MODEL = "qwen3:4b"
 CREATE_NO_WINDOW = 0x08000000
 START_APPS_CACHE: list[tuple[str, str]] | None = None
 ACTIVE_TIMERS: list[threading.Timer] = []
+VOICE_MODE = False
 
 
 def set_state(state: str) -> None:
@@ -134,6 +135,8 @@ def wait_for_wake_word() -> bool:
 
 def hands_free_mode() -> str:
     """Wait for the wake word, process one command, and resume listening."""
+    global VOICE_MODE
+    VOICE_MODE = True
     speak("Hands free mode is on. Say Hey Iris, then wait for the beep.")
     while wait_for_wake_word():
         try:
@@ -150,11 +153,23 @@ def hands_free_mode() -> str:
             continue
         repaired = normalise_voice_command(heard)
         if repaired in {"stop listening", "mute", "hands free off"}:
+            VOICE_MODE = False
             return "Hands free mode is off."
         reply = handle_command(repaired)
         print(f"Iris: {reply}")
         speak(reply)
+    VOICE_MODE = False
     return "Hands free mode is unavailable."
+
+
+def confirm_action(question: str) -> bool:
+    """Ask for a clear yes/no before a local write or capture."""
+    if VOICE_MODE:
+        speak(question + " Say yes or no.")
+        answer = listen_for_command(max_seconds=8).casefold()
+        return any(word in answer.split() for word in ("yes", "yeah", "yep", "sure", "okay"))
+    answer = input(f"Iris: {question} (yes/no) ").strip().casefold()
+    return answer in {"y", "yes", "yeah", "yep", "sure", "okay"}
 
 
 def listen_for_command(max_seconds: int = 15) -> str:
@@ -435,6 +450,8 @@ def search_spotify(query: str) -> str:
 
 def create_note(content: str) -> str:
     """Save a timestamped private note under Iris's E:-drive data directory."""
+    if not confirm_action(f"Should I save this note: {content.strip()}?"):
+        return "Okay, I did not save the note."
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     note_path = NOTES_DIR / f"note_{timestamp}.txt"
@@ -495,6 +512,9 @@ def change_volume(action: str) -> str:
 def take_screenshot() -> str:
     """Capture all screens to Iris's private local data directory."""
     from PIL import ImageGrab
+
+    if not confirm_action("Should I take a screenshot now?"):
+        return "Okay, I did not take a screenshot."
 
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -581,6 +601,8 @@ def handle_command(command: str) -> str:
     if command in {"handsfree", "hands free"}:
         return hands_free_mode()
     if command == "voice":
+        global VOICE_MODE
+        VOICE_MODE = True
         heard = listen_for_command()
         print(f"You said: {heard}")
         if heard.startswith("i didn't") or heard.startswith("i couldn't"):
@@ -588,7 +610,10 @@ def handle_command(command: str) -> str:
         repaired = normalise_voice_command(heard)
         if repaired != heard:
             print(f"Iris interpreted that as: {repaired}")
-        return handle_command(repaired)
+        try:
+            return handle_command(repaired)
+        finally:
+            VOICE_MODE = False
     if command.startswith("open "):
         requested = command.removeprefix("open ").strip()
         folder_names = {
