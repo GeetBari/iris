@@ -2,6 +2,12 @@
 
 A free, local-first Windows assistant. Iris uses Whisper for offline speech recognition and Qwen for local natural-language understanding, while retaining a strict safe-action boundary.
 
+## Development update
+
+Iris is actively developed on Windows with its models, notes, screenshots, and
+runtime kept on a non-system drive. The public repository tracks source and
+setup files only; private runtime data and downloaded models remain excluded.
+
 ## What it can do now
 
 * `open chrome`
