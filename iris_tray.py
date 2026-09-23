@@ -18,7 +18,7 @@ ASSISTANT = PROJECT_DIR / "assistant.py"
 STATE_PATH = PROJECT_DIR / "iris-state.json"
 MUTE_PATH = PROJECT_DIR / "iris-muted.flag"
 RESTART_PATH = PROJECT_DIR / "iris-restart.flag"
-LOG_PATH = PROJECT_DIR / "iris.log"
+LOG_DIR = PROJECT_DIR / "data" / "logs"
 CREATE_NO_WINDOW = 0x08000000
 
 STATE_COLOURS = {
@@ -54,12 +54,16 @@ class IrisController:
         self.log_file = None
         self.icon: pystray.Icon | None = None
         self.running = True
+        self.log_path: Path | None = None
 
     def start_assistant(self) -> None:
         self.stop_assistant()
         MUTE_PATH.unlink(missing_ok=True)
         write_state("starting")
-        self.log_file = LOG_PATH.open("a", encoding="utf-8")
+        session_folder = LOG_DIR / time.strftime("%Y-%m-%d")
+        session_folder.mkdir(parents=True, exist_ok=True)
+        self.log_path = session_folder / f"session_{time.strftime('%H-%M-%S')}.log"
+        self.log_file = self.log_path.open("a", encoding="utf-8")
         self.process = subprocess.Popen(
             [str(PYTHONW), "-u", str(ASSISTANT), "--handsfree"],
             cwd=str(PROJECT_DIR), creationflags=CREATE_NO_WINDOW,

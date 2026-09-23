@@ -18,7 +18,7 @@ PROJECT_DIR = Path(__file__).parent
 STATE_PATH = PROJECT_DIR / "iris-state.json"
 MUTE_PATH = PROJECT_DIR / "iris-muted.flag"
 RESTART_PATH = PROJECT_DIR / "iris-restart.flag"
-LOG_PATH = PROJECT_DIR / "iris.log"
+LOG_DIR = PROJECT_DIR / "data" / "logs"
 PYTHON = PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
 ASSISTANT = PROJECT_DIR / "assistant.py"
 HOST, PORT = "127.0.0.1", 8765
@@ -33,10 +33,34 @@ def state() -> str:
 
 
 def logs() -> str:
+    path = latest_log()
     try:
-        return LOG_PATH.read_text(encoding="utf-8", errors="replace")[-12000:]
+        return path.read_text(encoding="utf-8", errors="replace")[-12000:] if path else "No Iris log yet. Start the tray app first."
     except OSError:
         return "No Iris log yet. Start the tray app first."
+
+
+def latest_log() -> Path | None:
+    files = available_logs()
+    return max(files, key=lambda item: item.stat().st_mtime) if files else None
+
+
+def available_logs() -> list[Path]:
+    files = list(LOG_DIR.glob("*/*.log")) if LOG_DIR.exists() else []
+    legacy = PROJECT_DIR / "iris.log"
+    if legacy.exists():
+        files.append(legacy)
+    return files
+
+
+def selected_log(value: str | None) -> Path | None:
+    files = available_logs()
+    if not value:
+        return latest_log()
+    for path in files:
+        if str(path.relative_to(PROJECT_DIR)).replace("\\", "/") == value:
+            return path
+    return latest_log()
 
 
 def run_command(command: str) -> None:
@@ -68,10 +92,10 @@ input{box-sizing:border-box;width:100%;padding:13px 14px;border-radius:10px;bord
 <button onclick="post('/api/restart')">Restart Iris</button><button class="alt" onclick="post('/api/mute')">Mute / Resume</button>
 <h3>Command console</h3><div class="muted hint">Send a normal Iris command without using the microphone.</div>
 <input id="command" placeholder="e.g. open calculator" onkeydown="if(event.key==='Enter')send()"><button onclick="send()">Send command</button><pre id="reply">Ready.</pre></section>
-<section class="card"><div class="eyebrow">LIVE ACTIVITY</div><div class="muted hint" style="margin:8px 0 14px">Readable session history from Iris</div><div class="session-bar"><span>Session <strong id="session">Loading...</strong></span><span>Updated <strong id="updated">—</strong></span></div><div class="terminal" id="logs">Loading...</div></section></div></main>
+<section class="card"><div class="eyebrow">LIVE ACTIVITY</div><div class="muted hint" style="margin:8px 0 14px">Readable session history from Iris</div><select id="logSelect" onchange="refresh()"></select><div class="session-bar"><span>Session <strong id="session">Loading...</strong></span><span>Updated <strong id="updated">—</strong></span></div><div class="terminal" id="logs">Loading...</div></section></div></main>
 <script>
 function renderLogs(raw){let box=document.querySelector('#logs');box.innerHTML='';let lines=raw.split(/\\r?\\n/).filter(Boolean);if(!lines.length){box.innerHTML='<div class="terminal-empty">No session events yet.</div>';return}lines.forEach((line,i)=>{let row=document.createElement('div');row.className='terminal-line';let n=document.createElement('span');n.className='line-no';n.textContent=String(i+1).padStart(2,'0');let text=document.createElement('span');text.textContent=line;let low=line.toLowerCase();text.className=low.includes('iris:')?'reply':low.includes('you said')?'heard':low.includes('listening')||low.includes('understanding')?'event':'system';row.append(n,text);box.append(row)});box.scrollTop=box.scrollHeight}
-async function refresh(){let s=await fetch('/api/status').then(r=>r.json());document.querySelector('#state').textContent=s.state.replaceAll('_',' ');document.querySelector('#dot').style.background=s.color;document.querySelector('#session').textContent=s.session;document.querySelector('#updated').textContent=s.updated;renderLogs(s.logs)}
+async function refresh(){let selected=document.querySelector('#logSelect').value;let s=await fetch('/api/status'+(selected?'?file='+encodeURIComponent(selected):'')).then(r=>r.json());document.querySelector('#state').textContent=s.state.replaceAll('_',' ');document.querySelector('#dot').style.background=s.color;document.querySelector('#session').textContent=s.session;document.querySelector('#updated').textContent=s.updated;let select=document.querySelector('#logSelect');if(!select.options.length){s.logsList.forEach(item=>{let option=document.createElement('option');option.value=item.file;option.textContent=item.label;select.append(option)});select.value=s.selected}renderLogs(s.logs)}
 async function post(url){let r=await fetch(url,{method:'POST'});document.querySelector('#reply').textContent=await r.text();setTimeout(refresh,400)}
 async function send(){let c=document.querySelector('#command').value.trim();if(!c)return;let r=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'command='+encodeURIComponent(c)});document.querySelector('#reply').textContent=await r.text();document.querySelector('#command').value='';setTimeout(refresh,500)}
 refresh();setInterval(refresh,2000)
@@ -91,16 +115,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/":
             self.send_text(PAGE, content_type="text/html")
-        elif self.path == "/api/status":
+        elif urllib.parse.urlparse(self.path).path == "/api/status":
             colours = {"listening":"#facc15","recording":"#f59e0b","thinking":"#fde047","speaking":"#facc15","muted":"#737373"}
             try:
-                modified = LOG_PATH.stat().st_mtime
-                session = __import__("datetime").datetime.fromtimestamp(modified).strftime("%d %b %Y, %H:%M")
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                chosen = query.get("file", [None])[0]
+                path = selected_log(chosen)
+                modified = path.stat().st_mtime if path else 0
+                session = __import__("datetime").datetime.fromtimestamp(modified).strftime("%d %b %Y, %H:%M") if path else "Not started"
                 updated = __import__("datetime").datetime.now().strftime("%H:%M:%S")
             except OSError:
                 session, updated = "Not started", "—"
             current = state()
-            self.send_text(json.dumps({"state": current, "color": colours.get(current, "#737373"), "logs": logs(), "session": session, "updated": updated}), content_type="application/json")
+            entries = [{"file": str(item.relative_to(PROJECT_DIR)).replace("\\", "/"), "label": ("Legacy log" if item.name == "iris.log" else item.parent.name + " / " + item.stem)} for item in sorted(available_logs(), key=lambda item: item.stat().st_mtime, reverse=True)]
+            chosen_file = str(path.relative_to(PROJECT_DIR)).replace("\\", "/") if path else ""
+            self.send_text(json.dumps({"state": current, "color": colours.get(current, "#737373"), "logs": path.read_text(encoding="utf-8", errors="replace")[-12000:] if path else "No Iris log yet.", "session": session, "updated": updated, "logsList": entries, "selected": chosen_file}), content_type="application/json")
         else:
             self.send_text("Not found", 404)
 
