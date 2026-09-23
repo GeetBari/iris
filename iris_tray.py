@@ -17,6 +17,7 @@ PYTHONW = PROJECT_DIR / ".venv" / "Scripts" / "pythonw.exe"
 ASSISTANT = PROJECT_DIR / "assistant.py"
 STATE_PATH = PROJECT_DIR / "iris-state.json"
 MUTE_PATH = PROJECT_DIR / "iris-muted.flag"
+RESTART_PATH = PROJECT_DIR / "iris-restart.flag"
 LOG_PATH = PROJECT_DIR / "iris.log"
 CREATE_NO_WINDOW = 0x08000000
 
@@ -101,6 +102,9 @@ class IrisController:
     def poll_state(self) -> None:
         previous = ""
         while self.running:
+            if RESTART_PATH.exists():
+                RESTART_PATH.unlink(missing_ok=True)
+                self.start_assistant()
             if self.process is not None and self.process.poll() is not None:
                 write_state("stopped")
             state = read_state()

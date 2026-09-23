@@ -17,6 +17,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).parent
 STATE_PATH = PROJECT_DIR / "iris-state.json"
 MUTE_PATH = PROJECT_DIR / "iris-muted.flag"
+RESTART_PATH = PROJECT_DIR / "iris-restart.flag"
 LOG_PATH = PROJECT_DIR / "iris.log"
 PYTHON = PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
 ASSISTANT = PROJECT_DIR / "assistant.py"
@@ -97,9 +98,8 @@ class Handler(BaseHTTPRequestHandler):
             else: MUTE_PATH.touch(); STATE_PATH.write_text('{"state":"muted"}', encoding="utf-8")
             self.send_text("Mute state changed.")
         elif self.path == "/api/restart":
-            MUTE_PATH.unlink(missing_ok=True)
-            subprocess.Popen([str(PYTHON), str(ASSISTANT), "--handsfree"], cwd=str(PROJECT_DIR), creationflags=CREATE_NO_WINDOW)
-            self.send_text("Iris restart requested.")
+            RESTART_PATH.touch()
+            self.send_text("Restart requested through the tray controller.")
         elif self.path == "/api/command":
             length = int(self.headers.get("Content-Length", "0"))
             command = urllib.parse.parse_qs(self.rfile.read(length).decode()).get("command", [""])[0].strip()
