@@ -44,6 +44,10 @@ PowerShell in this folder and run:
 .\.venv\Scripts\python.exe assistant.py
 ```
 
+For the local control center, double-click `run_iris_dashboard.bat`. It opens
+`http://127.0.0.1:8765` with Iris's state, recent logs, mute/restart controls,
+and a command console. The dashboard binds only to this PC.
+
 ## Setup on another Windows PC
 
 Iris requires Python 3.11+ and an Ollama-compatible local model server. Keep
