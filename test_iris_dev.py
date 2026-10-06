@@ -12,6 +12,17 @@ import iris_dev
 import iris_dashboard
 
 class DeveloperTests(unittest.TestCase):
+    def test_interactive_terminal_environment(self):
+        with patch.dict(iris_dev.os.environ, {'TERM': 'dumb'}):
+            self.assertEqual(iris_dev.job_environment(True)['TERM'], 'xterm-256color')
+            self.assertEqual(iris_dev.job_environment(False)['TERM'], 'dumb')
+            self.assertEqual(iris_dev.os.environ['TERM'], 'dumb')
+
+    def test_desktop_codex_uses_direct_mode(self):
+        self.assertEqual(iris_dev.agent_arguments('codex', 'C:/Users/example/AppData/Local/OpenAI/Codex/bin/version/codex.exe'), ' --no-daemon')
+        self.assertEqual(iris_dev.agent_arguments('codex', 'E:/tools/codex.cmd'), '')
+        self.assertEqual(iris_dev.agent_arguments('claude', 'E:/tools/claude.exe'), '')
+
     def test_workspace_rejects_system_drive(self):
         with self.assertRaises(ValueError):
             iris_dev.workspace('C:/Windows')

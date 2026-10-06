@@ -35,6 +35,22 @@ def workspace(value):
 def psquote(value):
     return "'" + str(value).replace("'", "''") + "'"
 
+def job_environment(interactive):
+    environment = os.environ.copy()
+    if interactive:
+        # A newly created Windows console must not inherit a noninteractive TERM.
+        if environment.get('TERM', '').lower() in {'', 'dumb'}:
+            environment['TERM'] = 'xterm-256color'
+    return environment
+
+def agent_arguments(key, executable):
+    # The desktop app's extracted CLI lacks the standalone daemon package.
+    # Its documented --no-daemon mode runs the interactive CLI directly.
+    normalized = str(executable).replace('\\', '/').casefold()
+    if key == 'codex' and '/openai/codex/bin/' in normalized:
+        return ' --no-daemon'
+    return ''
+
 class Jobs:
     def __init__(self):
         self.lock = threading.RLock()
@@ -73,6 +89,7 @@ class Jobs:
             args += ['-File', str(script)]
             with log.open('ab') as output:
                 process = subprocess.Popen(args, cwd=cwd, stdin=None if interactive else subprocess.DEVNULL,
+                    env=job_environment(interactive),
                     stdout=None if interactive else output, stderr=None if interactive else subprocess.STDOUT,
                     creationflags=subprocess.CREATE_NEW_CONSOLE if interactive else subprocess.CREATE_NO_WINDOW)
             item = dict(id=key, command=command, cwd=str(cwd), status='running',
@@ -130,6 +147,7 @@ class Jobs:
             if key not in allowed or not installed.get(key):
                 raise ValueError('Selected tool is not installed or supported: ' + key)
             command = '& ' + psquote(installed[key])
+            command += agent_arguments(key, installed[key])
             if key in EDITORS:
                 command += ' ' + psquote(folder)
             commands.append((command, interactive))
