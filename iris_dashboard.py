@@ -13,6 +13,7 @@ import threading
 import urllib.parse
 import secrets
 from iris_dev import Jobs, discover
+from iris_task_client import SharedJobs, call as task_call
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -33,7 +34,7 @@ def developer_jobs():
     global DEV_JOBS
     with DEV_LOCK:
         if DEV_JOBS is None:
-            DEV_JOBS = Jobs()
+            DEV_JOBS = SharedJobs()
     return DEV_JOBS
 
 
@@ -133,7 +134,22 @@ class Handler(BaseHTTPRequestHandler):
             self.send_text(page.replace('__TOKEN__', DEV_TOKEN), content_type='text/html')
             return
         if self.path == '/api/dev':
-            self.send_text(json.dumps({'tools': discover(), 'jobs': developer_jobs().snapshot()}), content_type='application/json')
+            try:
+                self.send_text(json.dumps({'tools': discover(), 'jobs': developer_jobs().snapshot(), 'events': task_call('events')}), content_type='application/json')
+            except (OSError, ValueError) as error:
+                self.send_text(str(error), 503)
+            return
+        if self.path == '/api/profiles':
+            try:
+                self.send_text(json.dumps(task_call('profiles')), content_type='application/json')
+            except (OSError, ValueError) as error:
+                self.send_text(str(error), 503)
+            return
+        if self.path == '/api/events':
+            try:
+                self.send_text(json.dumps(task_call('events')), content_type='application/json')
+            except (OSError, ValueError) as error:
+                self.send_text(str(error), 503)
             return
         if self.path == "/":
             self.send_text(PAGE.replace('<main>', '<main><p><a style="color:#facc15" href="/dev">Open Developer Workspace →</a></p>'), content_type="text/html")
@@ -178,6 +194,12 @@ class Handler(BaseHTTPRequestHandler):
                 elif self.path == '/api/dev/stop':
                     jobs.stop(data['id'])
                     result = {'status': 'stopped'}
+                elif self.path == '/api/dev/profile':
+                    if data.get('approved') is not True:
+                        raise ValueError('Review profile commands before enabling voice execution.')
+                    result = task_call('save_profile', data)
+                elif self.path == '/api/dev/voice':
+                    result = {'reply': task_call('voice', {'text':data['text']}) or 'No matching developer action. Try start coding on Iris, run tests, or task status.'}
                 else:
                     self.send_text('Not found', 404)
                     return

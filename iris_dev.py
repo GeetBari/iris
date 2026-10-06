@@ -82,7 +82,9 @@ class Jobs:
             key = uuid.uuid4().hex
             log = DATA / (key + '.log')
             script = DATA / (key + '.ps1')
-            script.write_text(command, encoding='utf-8-sig')
+            # Preserve native tool failures, rather than reporting PowerShell's
+            # successful script completion as a successful test/build command.
+            script.write_text("$ErrorActionPreference = 'Stop'\n" + command + ("\nif ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }\n" if not interactive else ''), encoding='utf-8-sig')
             args = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass']
             if interactive:
                 args.append('-NoExit')

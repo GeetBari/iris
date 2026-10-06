@@ -75,6 +75,22 @@ No API keys, subscriptions, or internet accounts are needed. Voice recognition a
 
 ### Developer workspace
 
+Voice task controls now use a separate local task service. Say “Hey Iris”, wait
+for the response, then “start coding on Iris with VS Code and Codex”, “run tests
+for Iris”, “task status”, “what tasks are running”, “show what is using port
+3000”, or “stop the task I just started”. Follow-up test requests use the active
+project. Unknown project names prompt for a saved name; repeat the wake word
+before answering. Common patterns work directly; developer paraphrases use the
+local Qwen model when Ollama is running. Model output is restricted to supported
+actions and saved projects. Active project and recent task context persist on E:.
+
+Use Project profiles in `/dev` to save a name, folder, tools and test/server/build
+commands. Saving approves those exact commands for later voice execution.
+The default Iris profile includes its test command; server/build commands are
+unset until you configure them. Job results appear in the same history whether
+started by voice or dashboard. Jobs survive dashboard restarts while the task
+service remains running. Restart the Iris tray worker after updating voice code.
+
 Open `/dev` from the running local dashboard (or use its Developer Workspace
 link). Select an existing project folder on E: or D:, then choose installed
 editors and agents. VS Code, Cursor, Windsurf, Codex CLI, Claude Code, Gemini CLI,
@@ -83,13 +99,13 @@ as a local model runtime; use the reviewed command box for its commands.
 
 Interactive agents open their own terminal. Background PowerShell jobs show
 output, completion status, and Stop controls in the workspace. Job history is
-stored privately under `data/dev`. A dashboard restart loses control of active
-jobs; they are labeled untracked and may still be running. Review the displayed
+stored privately under `data/dev`. Restarting the task service itself loses control
+of active jobs; they are labeled untracked and may still be running. Review the displayed
 command before execution. Execution uses the dashboard's existing Windows
 permissions; launch Iris as a normal user. External tools may require accounts
 or paid subscriptions; detection does not install or sign into them.
 
-Say “start a coding session” to open this workspace when the dashboard is running.
+Say “open developer workspace” to open this page when the dashboard is running.
 Use Save selections to remember your project/editor/agent in this browser.
 
 1. **Current:** safe typed-command, voice, natural-language, and Start-menu app launcher.

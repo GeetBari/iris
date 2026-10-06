@@ -585,7 +585,19 @@ def open_local_path(requested_name: str) -> str:
 
 def handle_command(command: str) -> str:
     command = command.strip().lower()
-    if command.rstrip('.!?') in {'start coding session', 'start a coding session', 'open developer workspace', 'open coding workspace'}:
+    if command.rstrip('.!?') in {'open developer workspace', 'open coding workspace'}:
+        webbrowser.open('http://127.0.0.1:8765/dev')
+        return 'Opening the developer workspace. The dashboard must be running.'
+    if command not in {'voice', 'handsfree', 'hands free', 'quit', 'exit', 'goodbye', 'help'}:
+        try:
+            from iris_task_client import call
+            result = call('voice', {'text':command})
+            if result is not None:
+                return result
+        except (OSError, ValueError) as error:
+            if re.search(r'\b(coding|session|tests?|server|port|jobs?|tasks?|projects?|build|compile)\b', command):
+                return f'I could not complete that developer request: {error}'
+    if command.rstrip('.!?') in {'open developer workspace', 'open coding workspace'}:
         webbrowser.open('http://127.0.0.1:8765/dev')
         return 'Opening the developer workspace. Choose your project and tools there. The dashboard must be running.'
     if command in {"quit", "exit", "goodbye"}:

@@ -1,5 +1,46 @@
 # Iris development checkpoint
 
+## Voice task milestone — verified for publication
+
+User confirmed voice-driven tests, result reporting and VS Code + Codex launch.
+20 regression tests pass, including the codecs/Codex speech alias and exclusive
+Windows task-service port binding. Concurrent service requests also passed.
+
+Shared task owner: iris_task_service.py on loopback port 8766. Dashboard and
+assistant use iris_task_client.py with a private runtime token in ignored data/.
+The service starts on demand and survives dashboard/voice-worker restarts.
+Restarting the task service itself still leaves old jobs untracked; Windows
+restart also ends runtime context. No PID-based reattachment is attempted.
+
+iris_tasks.py owns server-side project profiles, current project, recent job
+IDs, structured voice actions and project-name clarification. Default profile
+iris uses this checkout, VS Code, Codex, and unittest discovery. Dashboard
+Project profiles editor persists approved commands to data/projects.json.
+Requests supported: start coding on PROJECT with EDITOR and AGENT, run tests
+for PROJECT, start development server, build project, check port NUMBER, list
+tasks, task status/did they pass, stop last task/server, cancel pending request.
+Unknown projects/tools are rejected; arbitrary speech never becomes shell code.
+Speech matching currently uses explicit intent rules, not an LLM planner.
+
+Validated: actual shared-service job survived dashboard restart and could be
+stopped; voice-task request ran saved Iris tests. Unit coverage includes profile
+persistence, project clarification, follow-up context, port input validation,
+owned-job cancellation, accurate failure reporting, terminal fixes and HTTP
+request protection. Browser script syntax checked. Microphone end-to-end check
+still requires user speech. Restart Iris worker to load voice integration.
+
+Natural phrasing fallback is now implemented in iris_intents.py using local
+Qwen JSON interpretation into validated actions/projects/tools only. Tested
+against the running E: Ollama installation with a coding-session paraphrase.
+No model-generated shell text is executed. Exact common commands still work
+without Ollama. Active project/recent task IDs persist in data/task-context.json;
+dated voice request/reply events persist in data/task-events.jsonl and are shown
+in the developer workspace. Original personal commands bypass this routing.
+
+Remaining stages from the plan: broader multi-step planning, reviewed generated
+commands, richer job disambiguation, UAC workflows and full agent task adapters.
+Agent integration currently launches interactive terminals, not task submission.
+
 ## October 6, 2026
 
 Validation: four tests passed covering actual PowerShell output and failure exit
