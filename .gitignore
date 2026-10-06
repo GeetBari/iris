@@ -13,6 +13,10 @@ iris-state.json
 iris-muted.flag
 iris.log
 data/
+iris-restart.flag
+
+# Local development notes
+DEVELOPMENT_PROGRESS.md
 
 # Local configuration and secrets
 .env

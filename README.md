@@ -1,137 +1,147 @@
-     # Iris — Local Voice Assistant
+# Iris
 
-A free, local-first Windows assistant. Iris uses Whisper for offline speech recognition and Qwen for local natural-language understanding, while retaining a strict safe-action boundary.
+A Windows voice assistant for everyday tasks and coding workflows.
 
-## Development update
+Iris started with a simple goal: get things done on a PC without remembering
+every command or opening every tool manually. Say “Hey Iris”, wait for her
+response, and ask her to open an app, save a note, run a project's tests, or
+start a coding session.
 
-Iris is actively developed on Windows with its models, notes, screenshots, and
-runtime kept on a non-system drive. The public repository tracks source and
-setup files only; private runtime data and downloaded models remain excluded.
+Speech recognition and request interpretation run locally. A browser dashboard
+shows activity, project profiles, background jobs, and results.
 
-## What it can do now
+![Iris Control Center](docs/dashboard.png)
 
-* `open chrome`
-* `open brave`
-* `open notepad`
-* `open calculator`
-* `open youtube`
-* `search youtube for lo-fi music`
-* `search google for weather in delhi`
-* `play relaxing music on Spotify` — opens Spotify directly to a music search.
-* `voice` — speak naturally, then pause to submit the command, e.g. `could you fire up Discord?`
-* Spoken replies — Iris uses the built-in Windows offline voice by default.
-* `handsfree` — enables the local “Hey Iris” wake word; press `Ctrl+C` for an immediate stop.
-* `take a note saying buy milk` — saves a private text note under `data/notes`.
-* `set a timer for five minutes`
-* `turn the volume up`, `turn the volume down`, or `mute the volume`
-* `take a screenshot` — saves it under `data/screenshots`.
-* `open my Downloads folder` or `open the Iris README file`
-* `help`
-* `quit`
+Dashboard preview with sample activity.
 
-Iris can open any unambiguous application listed in your Windows Start menu; the built-in list is only for trusted websites and reliable shortcuts. For example, try `open Discord` or `open Steam` without adding them first.
+## What works
 
-## Run it
+- Wake-word listening, spoken replies, and tray controls.
+- Opening installed apps and common folders, notes, screenshots, timers,
+  volume controls, and web searches.
+- Saved project profiles with editors, coding agents, and test/server/build commands.
+- Shared voice and dashboard controls for jobs, with output, exit status,
+  and stop buttons.
+- Dated session logs and access to older history.
+- Reviewed Codex tasks with streamed activity and final responses.
 
-For the hands-free tray app, double-click `run_iris_tray.bat`. The tray icon
-shows Iris's current state; right-click it to mute, resume, restart, or quit.
-Use only one Iris launcher at a time.
+Editor launchers support VS Code, Cursor, and Windsurf. Agent launchers support
+Codex CLI, Claude Code, Gemini CLI, and Aider when installed and available on
+PATH. Direct task submission is currently implemented for Codex only.
 
-For the original terminal interface, double-click `run_iris.bat`, or open
-PowerShell in this folder and run:
+## Try it
+
+| Say after “Hey Iris” | Result |
+| --- | --- |
+| “Open Downloads” | Opens the folder in File Explorer. |
+| “Take a note saying buy milk” | Saves a note and opens it in the default editor. |
+| “Start coding on Iris with VS Code and Codex” | Launches the tools in the saved project folder. |
+| “Run tests for Iris” | Runs the project's saved test command. |
+| “Did they pass?” | Reports the recent task's status and exit code. |
+| “Show what's using port 3000” | Starts a port diagnostic visible in job history. |
+| “Stop the task I just started” | Stops the matching managed job. |
+| “Ask Codex for Iris to explain the project structure” | Prepares a read-only agent task for approval. |
+
+Use your own saved project name in place of “Iris”. Speak each follow-up after
+the wake word. Clear requests work directly; less familiar developer phrasing
+uses the local Qwen model.
+
+## Setup
+
+This is a Windows development project, not a packaged installer. It has been
+tested with Python 3.13. The launchers currently assume an E: drive layout;
+adjust those paths for your machine before running them. Developer project
+folders must currently be on D: or E:.
+
+1. Clone the repository into a folder on your data drive.
+2. Create an environment and install dependencies from that folder:
+
+   ```powershell
+   py -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install --cache-dir .\pip-cache -r requirements.txt
+   ```
+
+3. Install Ollama on your chosen drive. Set its model directory before starting
+   the server:
+
+   ```powershell
+   $env:OLLAMA_MODELS = 'E:\codex\iris-models'
+   ollama serve
+   ```
+
+   In another terminal, with Ollama on PATH, run `ollama pull qwen3:4b`.
+4. Download and extract the Vosk English model into
+   `models/vosk-model-small-en-us-0.15/`. It is required for wake-word listening.
+5. Whisper's `small.en` model downloads into `models/whisper` on first use.
+   Allow extra time and an internet connection for that first download.
+6. Check the Ollama paths in the launchers. Current defaults are
+   `E:\codex\ollama\ollama.exe` and `E:\codex\iris-models`.
+
+| Launcher | Purpose |
+| --- | --- |
+| `run_iris_tray.bat` | Hands-free Iris with a tray icon. |
+| `run_iris_dashboard.bat` | Opens the developer dashboard once the server is ready. |
+| `run_iris.bat` | Original terminal interface. |
+
+Use one voice launcher at a time. The dashboard can run alongside it.
+The control center is at `http://127.0.0.1:8765/`; the developer workspace is at
+`http://127.0.0.1:8765/dev`. Use Project profiles to save folders, tools, and commands.
+
+## Agent tasks and permissions
+
+Codex requests default to read-only access. Review a request in the dashboard,
+or say “approve agent task” for a single pending read-only request. File-changing
+requests require dashboard approval. Requests expire after five minutes and
+can only be approved once.
+
+Saved project commands run immediately by voice after you approve and save the
+profile. Manually entered PowerShell commands are reviewed before execution.
+Run Iris as a normal Windows user. Stopping a job does not undo work already done.
+
+The core voice assistant does not require a paid API. Web searches need internet
+access. Optional coding agents use their own accounts, permissions, and usage
+limits. Codex may send project context to its provider; those tasks are not offline.
+See the [Codex task documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+## Data and architecture
+
+Private runtime data is excluded from Git:
+
+- `data/notes` and `data/screenshots`: personal files.
+- `data/logs`: dated voice-session logs.
+- `data/dev`: job records, output, and agent responses.
+- `data/projects.json`: project profiles.
+- `models`: downloaded speech models and caches.
+
+`assistant.py` handles listening and everyday actions. The voice worker and
+dashboard call a separate local task service, which owns running jobs.
+Project actions live in `iris_tasks.py`; launching and agent adapters are in
+`iris_dev.py` and `iris_agents.py`. The service listens on loopback port 8766
+and uses a local runtime token.
+
+## Current limitations
+
+- Speech recognition can mishear names; saved profiles reduce repetition.
+- Spotify requests open search results, not guaranteed playback.
+- Timers require the voice process to remain running.
+- Jobs survive dashboard restarts, but restarting the task service loses control
+  of active jobs. They may continue running and are marked untracked.
+- Multi-step planning and administrator workflows are not implemented yet.
+- A successful agent exit does not prove that a coding task was solved. Review
+  the response, changes, and tests. Read-only submission has been tested end to
+  end; file-editing tasks still need end-to-end validation.
+
+## Tests
 
 ```powershell
-.\.venv\Scripts\python.exe assistant.py
+.\.venv\Scripts\python.exe -B -m unittest discover -v
 ```
 
-For the local control center, double-click `run_iris_dashboard.bat`. It opens
-`http://127.0.0.1:8765` with Iris's state, recent logs, mute/restart controls,
-and a command console. The dashboard binds only to this PC.
+Tests cover command execution, cancellation, profiles, voice routing, approvals,
+and local service request protection. They do not submit paid coding-agent
+requests. Some tests launch short-lived PowerShell processes.
 
-## Setup on another Windows PC
+## Next
 
-Iris requires Python 3.11+ and an Ollama-compatible local model server. Keep
-models on a non-system drive by setting `OLLAMA_MODELS` before downloading a
-model. Create an environment and install the Python requirements:
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Install Ollama, start its local server, and download the model used by Iris:
-
-```powershell
-ollama pull qwen3:4b
-```
-
-The first use of voice mode downloads Whisper's English model into `models`.
-It is intentionally excluded from Git because it is a large, reproducible
-download.
-
-No API keys, subscriptions, or internet accounts are needed. Voice recognition and language understanding run on this PC. Searches and web sites naturally require an internet connection once opened.
-
-## Roadmap
-
-### Developer workspace
-
-#### Submitted Codex tasks
-
-Say “ask Codex for Iris to explain the project structure”. Iris prepares a
-read-only request for the named saved project. Say “approve agent task” to
-submit the single pending read-only request, or “cancel agent task” to discard
-it. Repeat “Hey Iris” before each spoken follow-up. Requests expire after five
-minutes; approval is one-use and tied to the exact instructions and folder.
-
-The developer workspace also has a Give Codex a task panel. Choose a saved
-project, enter instructions, choose read-only or project-edit access, prepare
-the request, and review it before approving. File-changing tasks require a
-dashboard approval. They run through `codex exec` with the selected sandbox,
-stream events into Job history, and save a final response under Agent results.
-Ask “task status” or “stop the agent task” to inspect or stop the last task.
-Stopping a task does not undo edits it already made. Process completion is not
-independent proof that the requested coding task was solved: review the result
-and diff. Existing Codex login and account allowance apply; Codex may send
-project context to its provider. No sandbox-bypass flags are used.
-
-This integration follows the [Codex non-interactive documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
-Other agent tools still have interactive launch support only.
-
-Voice task controls now use a separate local task service. Say “Hey Iris”, wait
-for the response, then “start coding on Iris with VS Code and Codex”, “run tests
-for Iris”, “task status”, “what tasks are running”, “show what is using port
-3000”, or “stop the task I just started”. Follow-up test requests use the active
-project. Unknown project names prompt for a saved name; repeat the wake word
-before answering. Common patterns work directly; developer paraphrases use the
-local Qwen model when Ollama is running. Model output is restricted to supported
-actions and saved projects. Active project and recent task context persist on E:.
-
-Use Project profiles in `/dev` to save a name, folder, tools and test/server/build
-commands. Saving approves those exact commands for later voice execution.
-The default Iris profile includes its test command; server/build commands are
-unset until you configure them. Job results appear in the same history whether
-started by voice or dashboard. Jobs survive dashboard restarts while the task
-service remains running. Restart the Iris tray worker after updating voice code.
-
-Open `/dev` from the running local dashboard (or use its Developer Workspace
-link). Select an existing project folder on E: or D:, then choose installed
-editors and agents. VS Code, Cursor, Windsurf, Codex CLI, Claude Code, Gemini CLI,
-and Aider launchers are supported when available on PATH. Ollama is detected
-as a local model runtime; use the reviewed command box for its commands.
-
-Interactive agents open their own terminal. Background PowerShell jobs show
-output, completion status, and Stop controls in the workspace. Job history is
-stored privately under `data/dev`. Restarting the task service itself loses control
-of active jobs; they are labeled untracked and may still be running. Review the displayed
-command before execution. Execution uses the dashboard's existing Windows
-permissions; launch Iris as a normal user. External tools may require accounts
-or paid subscriptions; detection does not install or sign into them.
-
-Say “open developer workspace” to open this page when the dashboard is running.
-Use Save selections to remember your project/editor/agent in this browser.
-
-1. **Current:** safe typed-command, voice, natural-language, and Start-menu app launcher.
-2. Offline spoken replies using Piper.
-3. Optional wake word, with a visible microphone indicator.
-
-Do not give the assistant arbitrary shell-command or file-delete access. Keep destructive actions behind confirmation prompts.
+Multi-step project workflows, clearer task disambiguation, service-readiness
+checks, and additional agent adapters.
