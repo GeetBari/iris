@@ -329,6 +329,8 @@ def normalise_voice_command(command: str) -> str:
     This never creates a shell command; it can only select an already approved
     item from APPS.
     """
+    if re.match(r'^(?:please )?(?:ask|tell) (?:codex|codecs)\b', command.strip(), re.I):
+        return command.strip()
     command = command.strip().lower()
     for misheard_prefix in ("oh been ", "oh pen ", "opener ", "open the "):
         if command.startswith(misheard_prefix):
@@ -584,6 +586,7 @@ def open_local_path(requested_name: str) -> str:
 
 
 def handle_command(command: str) -> str:
+    original_command = command.strip()
     command = command.strip().lower()
     if command.rstrip('.!?') in {'open developer workspace', 'open coding workspace'}:
         webbrowser.open('http://127.0.0.1:8765/dev')
@@ -591,7 +594,7 @@ def handle_command(command: str) -> str:
     if command not in {'voice', 'handsfree', 'hands free', 'quit', 'exit', 'goodbye', 'help'}:
         try:
             from iris_task_client import call
-            result = call('voice', {'text':command})
+            result = call('voice', {'text':original_command})
             if result is not None:
                 return result
         except (OSError, ValueError) as error:

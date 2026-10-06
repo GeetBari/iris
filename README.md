@@ -75,6 +75,28 @@ No API keys, subscriptions, or internet accounts are needed. Voice recognition a
 
 ### Developer workspace
 
+#### Submitted Codex tasks
+
+Say “ask Codex for Iris to explain the project structure”. Iris prepares a
+read-only request for the named saved project. Say “approve agent task” to
+submit the single pending read-only request, or “cancel agent task” to discard
+it. Repeat “Hey Iris” before each spoken follow-up. Requests expire after five
+minutes; approval is one-use and tied to the exact instructions and folder.
+
+The developer workspace also has a Give Codex a task panel. Choose a saved
+project, enter instructions, choose read-only or project-edit access, prepare
+the request, and review it before approving. File-changing tasks require a
+dashboard approval. They run through `codex exec` with the selected sandbox,
+stream events into Job history, and save a final response under Agent results.
+Ask “task status” or “stop the agent task” to inspect or stop the last task.
+Stopping a task does not undo edits it already made. Process completion is not
+independent proof that the requested coding task was solved: review the result
+and diff. Existing Codex login and account allowance apply; Codex may send
+project context to its provider. No sandbox-bypass flags are used.
+
+This integration follows the [Codex non-interactive documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
+Other agent tools still have interactive launch support only.
+
 Voice task controls now use a separate local task service. Say “Hey Iris”, wait
 for the response, then “start coding on Iris with VS Code and Codex”, “run tests
 for Iris”, “task status”, “what tasks are running”, “show what is using port

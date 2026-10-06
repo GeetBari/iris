@@ -136,8 +136,37 @@ class Jobs:
                 except OSError:
                     row['output'] = ''
                 row['can_stop'] = row['id'] in self.processes
+                if row.get('kind') == 'agent':
+                    from iris_agents import readable_events
+                    row['output'] = readable_events(row['output'])
+                    try:
+                        with Path(row['result_path']).open('rb') as stream:
+                            row['result'] = stream.read(32000).decode('utf-8', errors='replace')
+                    except OSError:
+                        row['result'] = ''
                 result.append(row)
             return result
+
+    def agent_task(self, cwd, prompt, mode):
+        from iris_agents import codex_command
+        cwd = workspace(cwd)
+        executable = next((t['path'] for t in discover() if t['id'] == 'codex'), None)
+        if not executable:
+            raise ValueError('Codex CLI is not installed or is not on PATH.')
+        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 12000:
+            raise ValueError('Enter agent instructions of 1 to 12000 characters.')
+        if mode not in {'read-only', 'workspace-write'}:
+            raise ValueError('Invalid agent permission mode.')
+        artifact = uuid.uuid4().hex
+        prompt_path = DATA / (artifact + '.prompt.txt')
+        result_path = DATA / (artifact + '.result.txt')
+        prompt_path.write_text(prompt, encoding='utf-8')
+        item = self.start(codex_command(executable, prompt_path, result_path, mode), str(cwd))
+        with self.lock:
+            self.items[item['id']].update(kind='agent', agent='codex', prompt=prompt, mode=mode,
+                result_path=str(result_path), label='Codex task')
+            self.save(self.items[item['id']])
+            return self.items[item['id']].copy()
 
     def session(self, folder, editor, agent):
         folder = workspace(folder)

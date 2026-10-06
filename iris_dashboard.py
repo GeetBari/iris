@@ -151,6 +151,12 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, ValueError) as error:
                 self.send_text(str(error), 503)
             return
+        if self.path == '/api/reviews':
+            try:
+                self.send_text(json.dumps(task_call('reviews')), content_type='application/json')
+            except (OSError, ValueError) as error:
+                self.send_text(str(error), 503)
+            return
         if self.path == "/":
             self.send_text(PAGE.replace('<main>', '<main><p><a style="color:#facc15" href="/dev">Open Developer Workspace →</a></p>'), content_type="text/html")
         elif urllib.parse.urlparse(self.path).path == "/api/status":
@@ -200,6 +206,12 @@ class Handler(BaseHTTPRequestHandler):
                     result = task_call('save_profile', data)
                 elif self.path == '/api/dev/voice':
                     result = {'reply': task_call('voice', {'text':data['text']}) or 'No matching developer action. Try start coding on Iris, run tests, or task status.'}
+                elif self.path == '/api/dev/agent-draft':
+                    result = task_call('draft_agent', data)
+                elif self.path == '/api/dev/agent-approve':
+                    result = task_call('approve_agent', {'id':data['id']})
+                elif self.path == '/api/dev/agent-reject':
+                    result = task_call('reject_agent', {'id':data['id']})
                 else:
                     self.send_text('Not found', 404)
                     return

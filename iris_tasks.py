@@ -2,6 +2,8 @@
 import json
 import re
 import threading
+import time
+import uuid
 from datetime import datetime
 from iris_intents import developer_language, interpret, canonical
 from pathlib import Path
@@ -20,6 +22,7 @@ class Tasks:
         self.active = 'iris'
         self.last_ids = []
         self.pending = None
+        self.reviews = {}
         self.context_path = self.path.with_name('task-context.json')
         self.events_path = self.path.with_name('task-events.jsonl')
         try:
@@ -88,15 +91,33 @@ class Tasks:
         return reply
 
     def _voice(self, text):
+        original = text.strip()
         text = re.sub(r'[.!?]+$', '', text.strip().lower())
         text = re.sub(r'^(?:hey iris[, ]+|please )', '', text)
         text = text.replace('vs code', 'vscode').replace('visual studio code', 'vscode')
+        if text in {'approve agent task', 'confirm agent task'}:
+            pending = self.pending_reviews()
+            if len(pending) != 1:
+                return 'Choose one pending agent task in the dashboard, or ask me for a new task.'
+            if pending[0]['mode'] != 'read-only':
+                return 'Please approve file-changing agent tasks in the dashboard after reviewing them.'
+            item = self.approve_review(pending[0]['id'])
+            return 'Started Codex. Ask task status or stop the agent task. Results will appear in the dashboard.'
+        if text in {'cancel agent task', 'cancel pending task'}:
+            self.reviews.clear()
+            return 'Cancelled pending agent requests. Running tasks were left running.'
+        agent_request = re.match(r'^(?:please )?(?:ask|tell) (?:codex|codecs)(?: (?:on|for) (.+?))? to (.+)$', original, re.I | re.S)
+        if agent_request:
+            project = (agent_request[1] or self.active).strip().lower()
+            review = self.draft_agent(project, agent_request[2], 'read-only')
+            return 'Agent task ready for ' + project + ': ' + review['prompt'][:180] + '. Read-only access. Say approve agent task, or review it in the dashboard. Codex uses your account allowance.'
         if re.search(r'\b(note|screenshot|spotify|volume|timer|google|youtube)\b', text):
             return None
         if re.match(r'(?:how (?:do|can|would)|explain|tell me how|what would happen|if I)\b', text, re.I):
             return 'That sounds like a question rather than an execution request. Say start coding, run tests, or check a port when you want me to act.'
         if text in {'cancel', 'cancel that', 'never mind', 'nevermind'}:
             self.pending = None
+            self.reviews.clear()
             return 'Cancelled the pending request. Running jobs were left running.'
         if re.search(r"\b(don't|do not|never|stop trying to)\b", text):
             return 'Okay. I have not started an action.'
@@ -114,7 +135,7 @@ class Tasks:
             items = [j for j in self.jobs.snapshot() if j['id'] in self.last_ids]
             if not items:
                 return 'There is no recent task to report.'
-            return '; '.join(j.get('label', 'Task') + ': ' + j['status'] + (f", exit code {j['exit_code']}" if j['exit_code'] is not None else '') for j in items)
+            return '; '.join(j.get('label', 'Task') + ': ' + j['status'] + (f", exit code {j['exit_code']}" if j['exit_code'] is not None else '') + ('. Agent response: ' + j['result'][:220] if j.get('result') else '') for j in items)
         if re.match(r'stop\b', text) and re.search(r'\b(task|job|server|tests)\b', text):
             items = [j for j in self.jobs.snapshot() if j['can_stop']]
             if 'server' in text:
@@ -202,7 +223,44 @@ class Tasks:
             if action == 'profiles': return list(self.profiles.values())
             if action == 'save_profile': return self.save_profile(data)
             if action == 'events': return self.events()
+            if action == 'reviews': return self.pending_reviews()
+            if action == 'draft_agent': return self.draft_agent(data['project'], data['prompt'], data.get('mode','read-only'))
+            if action == 'approve_agent': return self.approve_review(data['id'])
+            if action == 'reject_agent':
+                self.reviews.pop(data['id'], None)
+                return {'status':'cancelled'}
             if action == 'start': return self.jobs.start(data['command'], data['cwd'], data.get('interactive', False))
             if action == 'session': return self.jobs.session(data['cwd'], data['editor'], data['agent'])
             if action == 'stop': return self.jobs.stop(data['id'])
             raise ValueError('Unknown task action.')
+
+    def pending_reviews(self):
+        now = time.time()
+        self.reviews = {key: item for key, item in self.reviews.items() if item['expires'] > now}
+        return list(self.reviews.values())
+
+    def draft_agent(self, project, prompt, mode):
+        self.pending_reviews()
+        if project not in self.profiles:
+            raise ValueError('Choose a saved project: ' + ', '.join(self.profiles))
+        if not isinstance(prompt, str) or not 0 < len(prompt.strip()) <= 12000:
+            raise ValueError('Enter a task of 1 to 12000 characters.')
+        if mode not in {'read-only','workspace-write'}:
+            raise ValueError('Invalid permission mode.')
+        if len(self.reviews) >= 10:
+            raise ValueError('Review or cancel an existing request first.')
+        item = dict(id=uuid.uuid4().hex, project=project, cwd=str(workspace(self.profiles[project]['cwd'])),
+                    prompt=prompt.strip(), mode=mode, expires=time.time()+300)
+        self.reviews[item['id']] = item
+        return item.copy()
+
+    def approve_review(self, key):
+        self.pending_reviews()
+        item = self.reviews.pop(key, None)
+        if not item:
+            raise ValueError('Request expired, was cancelled, or was already submitted. Create a new request.')
+        job = self.jobs.agent_task(item['cwd'], item['prompt'], item['mode'])
+        self.last_ids = [job['id']]
+        self.active = item['project']
+        self.remember('Approved Codex task', 'Started for ' + item['project'])
+        return job

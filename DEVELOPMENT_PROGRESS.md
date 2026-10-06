@@ -1,5 +1,29 @@
 # Iris development checkpoint
 
+## Submitted Codex task integration — local, not committed
+
+New iris_agents.py generates quoted Codex exec launch plans and renders JSONL
+activity. Prompt files are sent through stdin, not interpolated into shell code.
+Agent jobs persist request/mode/result path and expose streamed activity plus
+final text. read-only and workspace-write only; no permission bypass.
+
+Voice: ask Codex for PROJECT to INSTRUCTIONS -> five-minute pending review;
+approve agent task submits a single read-only review. Write access requires
+dashboard approval. Cancel agent task removes pending reviews. Last-job status
+and stop controls work for submitted tasks. Dashboard has draft/review/cancel
+controls plus final-result cards. Approval payload is immutable and one-use.
+
+26 local tests and browser JS syntax validation passed. After the initial
+automatic approval block, the user explicitly authorized the live read-only
+Codex smoke test. It passed through Iris's draft/approve/job/result flow:
+job 4bf4928c36b44d2f86e4cf8ff6226f1f finished with exit code 0 and final text
+IRIS_AGENT_READY. Captured events show an agent response and completed turn,
+without tool-execution events. No file-editing agent task has been tested.
+
+Remaining: multi-step workflow execution, richer disambiguation/readiness checks,
+reviewed generated shell commands, administrator/UAC tasks, full adapters for
+other agents. No claim that the entire six-stage roadmap is complete.
+
 ## Voice task milestone — verified for publication
 
 User confirmed voice-driven tests, result reporting and VS Code + Codex launch.
