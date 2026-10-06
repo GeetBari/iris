@@ -11,6 +11,8 @@ import os
 import subprocess
 import threading
 import urllib.parse
+import secrets
+from iris_dev import Jobs, discover
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -23,6 +25,16 @@ PYTHON = PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
 ASSISTANT = PROJECT_DIR / "assistant.py"
 HOST, PORT = "127.0.0.1", 8765
 CREATE_NO_WINDOW = 0x08000000
+DEV_TOKEN = secrets.token_urlsafe(32)
+DEV_JOBS = None
+DEV_LOCK = threading.Lock()
+
+def developer_jobs():
+    global DEV_JOBS
+    with DEV_LOCK:
+        if DEV_JOBS is None:
+            DEV_JOBS = Jobs()
+    return DEV_JOBS
 
 
 def state() -> str:
@@ -65,7 +77,7 @@ def selected_log(value: str | None) -> Path | None:
 
 def run_command(command: str) -> None:
     subprocess.Popen(
-        [str(PYTHON), str(ASSISTANT), command],
+        [str(PYTHON), str(ASSISTANT), '--command', command],
         cwd=str(PROJECT_DIR), creationflags=CREATE_NO_WINDOW,
     )
 
@@ -113,8 +125,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self) -> None:
+        if self.headers.get('Host') not in {'127.0.0.1:8765', 'localhost:8765'}:
+            self.send_text('Invalid host', 403)
+            return
+        if self.path == '/dev':
+            page = (PROJECT_DIR / 'dev_dashboard.html').read_text(encoding='utf-8')
+            self.send_text(page.replace('__TOKEN__', DEV_TOKEN), content_type='text/html')
+            return
+        if self.path == '/api/dev':
+            self.send_text(json.dumps({'tools': discover(), 'jobs': developer_jobs().snapshot()}), content_type='application/json')
+            return
         if self.path == "/":
-            self.send_text(PAGE, content_type="text/html")
+            self.send_text(PAGE.replace('<main>', '<main><p><a style="color:#facc15" href="/dev">Open Developer Workspace →</a></p>'), content_type="text/html")
         elif urllib.parse.urlparse(self.path).path == "/api/status":
             colours = {"listening":"#facc15","recording":"#f59e0b","thinking":"#fde047","speaking":"#facc15","muted":"#737373"}
             try:
@@ -134,6 +156,35 @@ class Handler(BaseHTTPRequestHandler):
             self.send_text("Not found", 404)
 
     def do_POST(self) -> None:
+        if self.headers.get('Host') not in {'127.0.0.1:8765', 'localhost:8765'} or self.headers.get('Origin') not in {'http://127.0.0.1:8765', 'http://localhost:8765'}:
+            self.send_text('Local dashboard requests only', 403)
+            return
+        if self.path.startswith('/api/dev/'):
+            if self.headers.get('X-Iris-Token') != DEV_TOKEN:
+                self.send_text('Reload the dashboard to reconnect.', 403)
+                return
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= 16000:
+                    raise ValueError('Invalid request size.')
+                data = json.loads(self.rfile.read(size))
+                jobs = developer_jobs()
+                if self.path == '/api/dev/run':
+                    if data.get('approved') is not True:
+                        raise ValueError('Review the command before running it.')
+                    result = jobs.start(data['command'], data['cwd'])
+                elif self.path == '/api/dev/session':
+                    result = jobs.session(data['cwd'], data.get('editor', ''), data.get('agent', ''))
+                elif self.path == '/api/dev/stop':
+                    jobs.stop(data['id'])
+                    result = {'status': 'stopped'}
+                else:
+                    self.send_text('Not found', 404)
+                    return
+                self.send_text(json.dumps(result), content_type='application/json')
+            except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
+                self.send_text(str(error), 400)
+            return
         if self.path == "/api/mute":
             if MUTE_PATH.exists(): MUTE_PATH.unlink(missing_ok=True); STATE_PATH.write_text('{"state":"listening"}', encoding="utf-8")
             else: MUTE_PATH.touch(); STATE_PATH.write_text('{"state":"muted"}', encoding="utf-8")

@@ -1,4 +1,4 @@
-# Iris — Local Voice Assistant
+     # Iris — Local Voice Assistant
 
 A free, local-first Windows assistant. Iris uses Whisper for offline speech recognition and Qwen for local natural-language understanding, while retaining a strict safe-action boundary.
 
@@ -72,6 +72,25 @@ download.
 No API keys, subscriptions, or internet accounts are needed. Voice recognition and language understanding run on this PC. Searches and web sites naturally require an internet connection once opened.
 
 ## Roadmap
+
+### Developer workspace
+
+Open `/dev` from the running local dashboard (or use its Developer Workspace
+link). Select an existing project folder on E: or D:, then choose installed
+editors and agents. VS Code, Cursor, Windsurf, Codex CLI, Claude Code, Gemini CLI,
+and Aider launchers are supported when available on PATH. Ollama is detected
+as a local model runtime; use the reviewed command box for its commands.
+
+Interactive agents open their own terminal. Background PowerShell jobs show
+output, completion status, and Stop controls in the workspace. Job history is
+stored privately under `data/dev`. A dashboard restart loses control of active
+jobs; they are labeled untracked and may still be running. Review the displayed
+command before execution. Execution uses the dashboard's existing Windows
+permissions; launch Iris as a normal user. External tools may require accounts
+or paid subscriptions; detection does not install or sign into them.
+
+Say “start a coding session” to open this workspace when the dashboard is running.
+Use Save selections to remember your project/editor/agent in this browser.
 
 1. **Current:** safe typed-command, voice, natural-language, and Start-menu app launcher.
 2. Offline spoken replies using Piper.

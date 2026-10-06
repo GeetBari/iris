@@ -585,6 +585,9 @@ def open_local_path(requested_name: str) -> str:
 
 def handle_command(command: str) -> str:
     command = command.strip().lower()
+    if command.rstrip('.!?') in {'start coding session', 'start a coding session', 'open developer workspace', 'open coding workspace'}:
+        webbrowser.open('http://127.0.0.1:8765/dev')
+        return 'Opening the developer workspace. Choose your project and tools there. The dashboard must be running.'
     if command in {"quit", "exit", "goodbye"}:
         raise SystemExit
     if command == "help":
@@ -628,6 +631,9 @@ def handle_command(command: str) -> str:
 
 
 def main() -> None:
+    if len(sys.argv) == 3 and sys.argv[1] == '--command':
+        print(handle_command(sys.argv[2]), flush=True)
+        return
     if "--handsfree" in sys.argv:
         set_state("starting")
         try:
